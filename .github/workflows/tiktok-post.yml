@@ -1,0 +1,36 @@
+name: TikTok post
+
+on:
+  workflow_dispatch:
+    inputs:
+      video:
+        description: "Video: https URL or path in this repo (mp4)"
+        required: true
+      caption:
+        description: "Caption (exact text, approved before posting)"
+        required: true
+      privacy:
+        description: "Who can see it. Only SELF_ONLY works until TikTok approves the app."
+        type: choice
+        default: SELF_ONLY
+        options: [SELF_ONLY, MUTUAL_FOLLOW_FRIENDS, FOLLOWER_OF_CREATOR, PUBLIC_TO_EVERYONE]
+
+permissions:
+  contents: read
+
+jobs:
+  post:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Post to TikTok
+        env:
+          TIKTOK_CLIENT_KEY: ${{ secrets.TIKTOK_CLIENT_KEY }}
+          TIKTOK_CLIENT_SECRET: ${{ secrets.TIKTOK_CLIENT_SECRET }}
+          TIKTOK_REFRESH_TOKEN: ${{ secrets.TIKTOK_REFRESH_TOKEN }}
+          GH_PAT: ${{ secrets.GH_PAT }}
+          VIDEO: ${{ inputs.video }}
+          CAPTION: ${{ inputs.caption }}
+          PRIVACY: ${{ inputs.privacy }}
+        run: python3 scripts/tiktok_post.py
