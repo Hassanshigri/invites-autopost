@@ -9,6 +9,11 @@ on:
       caption:
         description: "Caption (exact text, approved before posting)"
         required: true
+      mode:
+        description: "draft = send to TikTok inbox to finish in the app. direct = publish now (needs TikTok approval for public)."
+        type: choice
+        default: draft
+        options: [draft, direct]
       privacy:
         description: "Who can see it. Only SELF_ONLY works until TikTok approves the app."
         type: choice
@@ -33,4 +38,5 @@ jobs:
           VIDEO: ${{ inputs.video }}
           CAPTION: ${{ inputs.caption }}
           PRIVACY: ${{ inputs.privacy }}
+          MODE: ${{ inputs.mode }}
         run: python3 scripts/tiktok_post.py

@@ -2,7 +2,9 @@
 """Direct-post one video to TikTok via the Content Posting API.
 
 Env: TIKTOK_CLIENT_KEY, TIKTOK_CLIENT_SECRET, TIKTOK_REFRESH_TOKEN,
-     VIDEO (https URL or repo path), CAPTION, PRIVACY (default SELF_ONLY).
+     VIDEO (https URL or repo path), CAPTION, PRIVACY (default SELF_ONLY),
+     MODE: "draft" sends to the TikTok inbox to finish in the app (works before
+     TikTok approves the app), "direct" publishes straight away.
 Optional: GH_PAT + GITHUB_REPOSITORY to save a rotated refresh token.
 """
 import json
@@ -97,6 +99,7 @@ def chunk_plan(size):
 def main():
     caption = os.environ.get("CAPTION", "").strip()
     privacy = os.environ.get("PRIVACY", "SELF_ONLY").strip() or "SELF_ONLY"
+    mode = os.environ.get("MODE", "draft").strip() or "draft"
     video = load_video(os.environ["VIDEO"])
     size = len(video)
     print(f"Video size: {size / MB:.1f} MB")
@@ -104,27 +107,30 @@ def main():
     token = refresh_access_token()
     auth = {"Authorization": f"Bearer {token}"}
 
-    info = ok(call("POST", f"{API}/v2/post/publish/creator_info/query/", {}, auth), "creator_info")
-    print(f"Posting as @{info.get('creator_username')}")
-    if privacy not in info.get("privacy_level_options", []):
-        sys.exit(f"Privacy {privacy} not allowed. Options: {info.get('privacy_level_options')}")
-
     chunk, count = chunk_plan(size)
-    init = ok(call("POST", f"{API}/v2/post/publish/video/init/", {
-        "post_info": {
-            "title": caption,
-            "privacy_level": privacy,
-            "disable_comment": bool(info.get("comment_disabled")),
-            "disable_duet": bool(info.get("duet_disabled")),
-            "disable_stitch": bool(info.get("stitch_disabled")),
-        },
-        "source_info": {
-            "source": "FILE_UPLOAD",
-            "video_size": size,
-            "chunk_size": chunk,
-            "total_chunk_count": count,
-        },
-    }, auth), "init")
+    source_info = {
+        "source": "FILE_UPLOAD",
+        "video_size": size,
+        "chunk_size": chunk,
+        "total_chunk_count": count,
+    }
+    if mode == "draft":
+        init = ok(call("POST", f"{API}/v2/post/publish/inbox/video/init/", {"source_info": source_info}, auth), "init")
+    else:
+        info = ok(call("POST", f"{API}/v2/post/publish/creator_info/query/", {}, auth), "creator_info")
+        print(f"Posting as @{info.get('creator_username')}")
+        if privacy not in info.get("privacy_level_options", []):
+            sys.exit(f"Privacy {privacy} not allowed. Options: {info.get('privacy_level_options')}")
+        init = ok(call("POST", f"{API}/v2/post/publish/video/init/", {
+            "post_info": {
+                "title": caption,
+                "privacy_level": privacy,
+                "disable_comment": bool(info.get("comment_disabled")),
+                "disable_duet": bool(info.get("duet_disabled")),
+                "disable_stitch": bool(info.get("stitch_disabled")),
+            },
+            "source_info": source_info,
+        }, auth), "init")
     publish_id, upload_url = init["publish_id"], init["upload_url"]
 
     for i in range(count):
@@ -141,6 +147,11 @@ def main():
         st = ok(call("POST", f"{API}/v2/post/publish/status/fetch/", {"publish_id": publish_id}, auth), "status")
         status = st.get("status")
         print(f"Status: {status}")
+        if status == "SEND_TO_USER_INBOX":
+            print("Sent to your TikTok inbox. Open TikTok, tap the notification, add the caption and post.")
+            if caption:
+                print(f"Caption to paste: {caption}")
+            return
         if status == "PUBLISH_COMPLETE":
             print(f"Posted. publish_id={publish_id} post_ids={st.get('publicaly_available_post_id')}")
             return
